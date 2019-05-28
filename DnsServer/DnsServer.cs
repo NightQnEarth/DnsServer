@@ -19,9 +19,9 @@ namespace DnsServer
                 while (true)
                 {
                     EndPoint remoteAddress = new IPEndPoint(IPAddress.Any, 0);
-                    var buffer = new byte[DatagramSize];
+                    var message = new byte[DatagramSize];
 
-                    dnsServer.ReceiveFrom(buffer, ref remoteAddress);
+                    dnsServer.ReceiveFrom(message, ref remoteAddress);
 
                     // TODO
                 }

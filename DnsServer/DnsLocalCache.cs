@@ -9,7 +9,7 @@ namespace DnsServer
     {
         private readonly string cacheFileName;
         private readonly DNS.Server.DnsServer originDnsServer;
-        private Dictionary<CachedRecordKey, DateTime> cachedRecords;
+        private Dictionary<CachedRecordKey, List<CachedRecordValue>> cachedRecords;
 
         public DnsLocalCache(string originDnsServerName, string cacheFileName)
         {
@@ -23,14 +23,14 @@ namespace DnsServer
         {
             try
             {
-                cachedRecords = JsonConvert.DeserializeObject<Dictionary<CachedRecordKey, DateTime>>(
+                cachedRecords = JsonConvert.DeserializeObject<Dictionary<CachedRecordKey, List<CachedRecordValue>>>(
                     File.ReadAllText(cacheFileName));
             }
             catch (Exception exception)
             {
                 Console.WriteLine("LoadCache():");
                 Console.WriteLine(exception);
-                cachedRecords = new Dictionary<CachedRecordKey, DateTime>();
+                cachedRecords = new Dictionary<CachedRecordKey, List<CachedRecordValue>>();
             }
         }
 
@@ -48,5 +48,10 @@ namespace DnsServer
                 throw;
             }
         }
+
+        private static bool VerifyCachedRecord(CachedRecordValue recordValue) =>
+            DateTime.Now - recordValue.CachedTime >= recordValue.ResourceRecord.TimeToLive;
+
+        public void UpdateCache() { }
     }
 }

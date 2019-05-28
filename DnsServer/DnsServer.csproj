@@ -56,6 +56,7 @@
     </ItemGroup>
     <ItemGroup>
         <Compile Include="CachedRecordKey.cs" />
+        <Compile Include="CachedRecordValue.cs" />
         <Compile Include="DnsLocalCache.cs" />
         <Compile Include="DnsServer.cs" />
         <Compile Include="Program.cs" />
