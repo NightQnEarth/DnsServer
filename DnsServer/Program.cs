@@ -19,10 +19,6 @@ namespace DnsServer
             {
                 Console.WriteLine(exception);
             }
-            finally
-            {
-                if (!dnsLocalCache.Empty) dnsLocalCache.SaveCache();
-            }
         }
     }
 }

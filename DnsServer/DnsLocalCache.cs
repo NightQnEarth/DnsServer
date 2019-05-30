@@ -12,7 +12,7 @@ namespace DnsServer
     public class DnsLocalCache
     {
         private readonly string cacheFileName;
-        private Dictionary<CachedRecordKey, HashSet<CachedRecordValue>> cachedRecords;
+        private Dictionary<string, HashSet<CachedRecordValue>> cachedRecords;
         private readonly JsonSerializerSettings jsonSerializerSettings;
 
         public DnsLocalCache(string cacheFileName)
@@ -22,7 +22,7 @@ namespace DnsServer
             jsonSerializerSettings = new JsonSerializerSettings();
             jsonSerializerSettings.Converters.Add(new IPAddressConverter());
             jsonSerializerSettings.Converters.Add(new DomainConverter());
-            jsonSerializerSettings.Converters.Add(new CachedRecordKeyConverter());
+            jsonSerializerSettings.Converters.Add(new ClassConverter());
             jsonSerializerSettings.Converters.Add(new RecordTypeConverter());
             jsonSerializerSettings.Formatting = Formatting.Indented;
         }
@@ -33,18 +33,24 @@ namespace DnsServer
         {
             if (File.Exists(cacheFileName))
             {
-                Console.WriteLine("Loading existing cache...");
+                try
+                {
+                    Console.WriteLine("Loading existing cache...");
 
-                cachedRecords = JsonConvert.DeserializeObject<Dictionary<CachedRecordKey, HashSet<CachedRecordValue>>>(
-                    File.ReadAllText(cacheFileName), jsonSerializerSettings);
+                    cachedRecords = JsonConvert.DeserializeObject<Dictionary<string, HashSet<CachedRecordValue>>>(
+                        File.ReadAllText(cacheFileName), jsonSerializerSettings);
 
-                if (!Empty)
-                    return;
+                    if (!Empty)
+                        return;
+                }
+                catch (Exception)
+                {
+                    Console.WriteLine("Detected problem with cache file. File will recreate.");
+                }
             }
-            else
-                Console.WriteLine("Will create new cache...");
+            else Console.WriteLine("Will create new cache...");
 
-            cachedRecords = new Dictionary<CachedRecordKey, HashSet<CachedRecordValue>>();
+            cachedRecords = new Dictionary<string, HashSet<CachedRecordValue>>();
         }
 
         public void SaveCache()
@@ -65,14 +71,22 @@ namespace DnsServer
 
         public void UpdateCache()
         {
-            foreach (var cachedRecord in cachedRecords)
-                cachedRecord.Value.RemoveWhere(cachedRecordValue => !VerifyCachedRecord(cachedRecordValue));
+            try
+            {
+                foreach (var cachedRecord in cachedRecords)
+                    cachedRecord.Value.RemoveWhere(cachedRecordValue => !VerifyCachedRecord(cachedRecordValue));
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
 
 //            cachedRecords = cachedRecords.Where(pair => pair.Value.Count > 0)
 //                                         .ToDictionary(pair => pair.Key, pair => pair.Value);
 
             bool VerifyCachedRecord(CachedRecordValue recordValue) =>
-                DateTime.Now - recordValue.CachedTime < recordValue.ResourceRecord.TimeToLive;
+                DateTime.Now - recordValue.CachedTime < new TimeSpan(0, 0, recordValue.TimeToLive);
         }
 
         public void CacheResponse(IResponse response)
@@ -80,7 +94,7 @@ namespace DnsServer
             foreach (var resourceRecord in response.AnswerRecords.Concat(response.AuthorityRecords)
                                                    .Concat(response.AdditionalRecords))
             {
-                var cachedRecordKey = new CachedRecordKey(resourceRecord.Name, resourceRecord.Type);
+                var cachedRecordKey = $"{resourceRecord.Name} {resourceRecord.Type}";
 
                 if (cachedRecords.ContainsKey(cachedRecordKey))
                     cachedRecords[cachedRecordKey].Add(new CachedRecordValue(resourceRecord));
@@ -91,9 +105,23 @@ namespace DnsServer
 
         public IEnumerable<IResourceRecord> FindResponse(Question question)
         {
-            cachedRecords.TryGetValue(new CachedRecordKey(question.Name, question.Type), out var cachedResourceRecords);
+            HashSet<CachedRecordValue> cachedResourceRecords = null;
+            
+            //cachedRecords.TryGetValue($"{question.Name} {question.Type}", out cachedResourceRecords);
 
-            return cachedResourceRecords?.Select(cachedRecordValue => cachedRecordValue.ResourceRecord);
+            var s = $"{question.Name} {question.Type}";
+            
+            foreach (var cachedRecordsKey in cachedRecords.Keys)
+                if (cachedRecordsKey.Equals(s))
+                    cachedResourceRecords = cachedRecords[cachedRecordsKey];
+
+            return cachedResourceRecords?.Select(
+                cachedRecordValue => new ResourceRecord(
+                    new Domain(cachedRecordValue.Name),
+                    cachedRecordValue.Data,
+                    cachedRecordValue.Type,
+                    cachedRecordValue.Class,
+                    new TimeSpan(0, 0, cachedRecordValue.TimeToLive)));
         }
     }
 }

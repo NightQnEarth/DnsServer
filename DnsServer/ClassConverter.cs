@@ -4,7 +4,7 @@ using Newtonsoft.Json;
 
 namespace DnsServer
 {
-    public class RecordTypeConverter : JsonConverter
+    public class ClassConverter : JsonConverter
     {
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer) =>
             writer.WriteValue(value.ToString());
@@ -12,10 +12,10 @@ namespace DnsServer
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue,
                                         JsonSerializer serializer)
         {
-            Enum.TryParse<RecordType>(reader.Value.ToString(), out var result);
+            Enum.TryParse<RecordClass>(reader.Value.ToString(), out var result);
             return result;
         }
 
-        public override bool CanConvert(Type objectType) => objectType == typeof(RecordType);
+        public override bool CanConvert(Type objectType) => objectType == typeof(RecordClass);
     }
 }

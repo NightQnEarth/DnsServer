@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using DNS.Client;
@@ -48,7 +49,7 @@ namespace DnsServer
                 {
                     var receivedRequest = Request.FromArray(receivedMessage);
 
-                    var cachedResourceRecords = dnsLocalCache.FindResponse(Question.FromArray(receivedMessage, 0));
+                    var cachedResourceRecords = dnsLocalCache.FindResponse(receivedRequest.Questions.First());
 
                     if (cachedResourceRecords is null)
                     {

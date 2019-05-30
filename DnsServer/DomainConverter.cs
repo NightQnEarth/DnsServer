@@ -10,8 +10,7 @@ namespace DnsServer
             writer.WriteValue(value.ToString());
 
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue,
-                                        JsonSerializer serializer) =>
-            new Domain(reader.Value.ToString());
+                                        JsonSerializer serializer) => new Domain(reader.Value.ToString());
 
         public override bool CanConvert(Type objectType) => objectType == typeof(Domain);
     }

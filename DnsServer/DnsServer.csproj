@@ -57,7 +57,9 @@
     <ItemGroup>
         <Compile Include="CachedRecordKey.cs" />
         <Compile Include="CachedRecordKeyConverter.cs" />
+        <Compile Include="CachedRecordKeyConverter2.cs" />
         <Compile Include="CachedRecordValue.cs" />
+        <Compile Include="ClassConverter.cs" />
         <Compile Include="DnsLocalCache.cs" />
         <Compile Include="DnsServer.cs" />
         <Compile Include="DomainConverter.cs" />
