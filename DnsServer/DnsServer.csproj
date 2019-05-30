@@ -56,11 +56,15 @@
     </ItemGroup>
     <ItemGroup>
         <Compile Include="CachedRecordKey.cs" />
+        <Compile Include="CachedRecordKeyConverter.cs" />
         <Compile Include="CachedRecordValue.cs" />
         <Compile Include="DnsLocalCache.cs" />
         <Compile Include="DnsServer.cs" />
+        <Compile Include="DomainConverter.cs" />
+        <Compile Include="IPAddressConverter .cs" />
         <Compile Include="Program.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />
+        <Compile Include="RecordTypeConverter.cs" />
     </ItemGroup>
     <ItemGroup>
       <None Include="packages.config" />

@@ -9,7 +9,7 @@ namespace DnsServer
 
         public static void Main()
         {
-            var dnsLocalCache = new DnsLocalCache(OriginDnsServerName, CacheFileName);
+            var dnsLocalCache = new DnsLocalCache(CacheFileName);
 
             try
             {
@@ -17,12 +17,11 @@ namespace DnsServer
             }
             catch (Exception exception)
             {
-                Console.WriteLine(exception.Message);
+                Console.WriteLine(exception);
             }
             finally
             {
-                if (!dnsLocalCache.Empty)
-                    dnsLocalCache.SaveCache();
+                if (!dnsLocalCache.Empty) dnsLocalCache.SaveCache();
             }
         }
     }

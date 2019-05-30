@@ -4,21 +4,23 @@ namespace DnsServer
 {
     public struct CachedRecordKey
     {
-        private readonly string resourceRecordName;
-        private readonly RecordType resourceRecordType;
+        public readonly string ResourceRecordName;
+        public readonly RecordType ResourceRecordType;
 
-        public CachedRecordKey(string resourceRecordName, RecordType resourceRecordType)
+        public CachedRecordKey(Domain resourceRecordName, RecordType resourceRecordType)
         {
-            this.resourceRecordName = resourceRecordName;
-            this.resourceRecordType = resourceRecordType;
+            ResourceRecordName = resourceRecordName.ToString().ToLower();
+            ResourceRecordType = resourceRecordType;
         }
 
-        public override bool Equals(object obj) => base.Equals(obj);
+        public override bool Equals(object obj) =>
+            obj is CachedRecordKey cachedRecordKey && cachedRecordKey.Equals(this);
 
-        public bool Equals(CachedRecordKey other) => resourceRecordName.Equals(other.resourceRecordName) &&
-                                                     resourceRecordType == other.resourceRecordType;
+        // ReSharper disable once MemberCanBePrivate.Global
+        public bool Equals(CachedRecordKey other) => ResourceRecordName.Equals(other.ResourceRecordName) &&
+                                                     ResourceRecordType == other.ResourceRecordType;
 
         public override int GetHashCode() => unchecked(
-            ((resourceRecordName != null ? resourceRecordName.GetHashCode() : 0) * 397) ^ (int)resourceRecordType);
+            ((ResourceRecordName != null ? ResourceRecordName.GetHashCode() : 0) * 397) ^ (int)ResourceRecordType);
     }
 }

@@ -5,10 +5,10 @@ namespace DnsServer
 {
     public struct CachedRecordValue
     {
-        public readonly ResourceRecord ResourceRecord;
+        public readonly IResourceRecord ResourceRecord;
         public readonly DateTime CachedTime;
 
-        public CachedRecordValue(ResourceRecord resourceRecord)
+        public CachedRecordValue(IResourceRecord resourceRecord)
         {
             ResourceRecord = resourceRecord;
             CachedTime = DateTime.Now;
