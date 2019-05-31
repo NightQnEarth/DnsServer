@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using DNS.Protocol;
 using DNS.Protocol.ResourceRecords;
@@ -12,45 +13,39 @@ namespace DnsServer
     public class DnsLocalCache
     {
         private readonly string cacheFileName;
-        private Dictionary<string, HashSet<CachedRecordValue>> cachedRecords;
+        private Dictionary<string, HashSet<SerializableResourceRecord>> cachedRecords;
         private readonly JsonSerializerSettings jsonSerializerSettings;
 
         public DnsLocalCache(string cacheFileName)
         {
             this.cacheFileName = cacheFileName;
 
-            jsonSerializerSettings = new JsonSerializerSettings();
-            jsonSerializerSettings.Converters.Add(new IPAddressConverter());
-            jsonSerializerSettings.Converters.Add(new DomainConverter());
-            jsonSerializerSettings.Converters.Add(new ClassConverter());
-            jsonSerializerSettings.Converters.Add(new RecordTypeConverter());
-            jsonSerializerSettings.Formatting = Formatting.Indented;
+            SetUpJsonSerializerSettings(out jsonSerializerSettings);
+
+            LoadCache();
         }
 
-        public bool Empty => cachedRecords is null || cachedRecords.Count == 0;
-
-        public void LoadCache()
+        public bool ToCacheResponse(IResponse response)
         {
-            if (File.Exists(cacheFileName))
+            bool wasAdded = false;
+
+            foreach (var resourceRecord in response.AnswerRecords.Concat(response.AuthorityRecords)
+                                                   .Concat(response.AdditionalRecords)
+                                                   .Where(record => record.Type != RecordType.PTR))
             {
-                try
-                {
-                    Console.WriteLine("Loading existing cache...");
+                var cachedRecordKey = $"{resourceRecord.Name} {resourceRecord.Type}";
 
-                    cachedRecords = JsonConvert.DeserializeObject<Dictionary<string, HashSet<CachedRecordValue>>>(
-                        File.ReadAllText(cacheFileName), jsonSerializerSettings);
-
-                    if (!Empty)
-                        return;
-                }
-                catch (Exception)
+                if (cachedRecords.ContainsKey(cachedRecordKey))
+                    wasAdded |= cachedRecords[cachedRecordKey].Add(new SerializableResourceRecord(resourceRecord));
+                else
                 {
-                    Console.WriteLine("Detected problem with cache file. File will recreate.");
+                    cachedRecords[cachedRecordKey] =
+                        new[] { new SerializableResourceRecord(resourceRecord) }.ToHashSet();
+                    wasAdded = true;
                 }
             }
-            else Console.WriteLine("Will create new cache...");
 
-            cachedRecords = new Dictionary<string, HashSet<CachedRecordValue>>();
+            return wasAdded;
         }
 
         public void SaveCache()
@@ -60,10 +55,10 @@ namespace DnsServer
             try
             {
                 using (var fileStream = new FileStream(cacheFileName, FileMode.OpenOrCreate, FileAccess.Write))
-                    using (var streamWriter = new StreamWriter(fileStream, Encoding.UTF8, 4096, true))
+                    using (var streamWriter = new StreamWriter(fileStream, Encoding.UTF8, 8192, true))
                         streamWriter.WriteLine(JsonConvert.SerializeObject(cachedRecords, jsonSerializerSettings));
             }
-            catch (IOException exception)
+            catch (Exception exception) when (exception is JsonException || exception is IOException)
             {
                 Console.WriteLine(exception);
             }
@@ -71,57 +66,76 @@ namespace DnsServer
 
         public void UpdateCache()
         {
-            try
-            {
-                foreach (var cachedRecord in cachedRecords)
-                    cachedRecord.Value.RemoveWhere(cachedRecordValue => !VerifyCachedRecord(cachedRecordValue));
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                throw;
-            }
+            cachedRecords = cachedRecords
+                            .Where(pair =>
+                            {
+                                pair.Value.RemoveWhere(resourceRecord => !VerifyCachedRecord(resourceRecord));
+                                return pair.Value.Count > 0;
+                            })
+                            .ToDictionary(pair => pair.Key, pair => pair.Value);
 
-//            cachedRecords = cachedRecords.Where(pair => pair.Value.Count > 0)
-//                                         .ToDictionary(pair => pair.Key, pair => pair.Value);
-
-            bool VerifyCachedRecord(CachedRecordValue recordValue) =>
-                DateTime.Now - recordValue.CachedTime < new TimeSpan(0, 0, recordValue.TimeToLive);
+            bool VerifyCachedRecord(SerializableResourceRecord resourceRecord) =>
+                DateTime.Now - resourceRecord.CachedTime < resourceRecord.TimeToLive;
         }
 
-        public void CacheResponse(IResponse response)
+        public IEnumerable<ResourceRecord> FindResponse(Question question)
         {
-            foreach (var resourceRecord in response.AnswerRecords.Concat(response.AuthorityRecords)
-                                                   .Concat(response.AdditionalRecords))
-            {
-                var cachedRecordKey = $"{resourceRecord.Name} {resourceRecord.Type}";
+            HashSet<SerializableResourceRecord> cachedResourceRecords = null;
 
-                if (cachedRecords.ContainsKey(cachedRecordKey))
-                    cachedRecords[cachedRecordKey].Add(new CachedRecordValue(resourceRecord));
-                else
-                    cachedRecords[cachedRecordKey] = new[] { new CachedRecordValue(resourceRecord) }.ToHashSet();
+            var questionName = $"{question.Name} {question.Type}";
+
+            if (cachedRecords.ContainsKey(questionName))
+                cachedResourceRecords = cachedRecords[questionName];
+
+            return cachedResourceRecords?.Select(cachedRecordValue => new ResourceRecord(
+                                                     cachedRecordValue.Name, cachedRecordValue.Data,
+                                                     cachedRecordValue.Type, cachedRecordValue.Class,
+                                                     cachedRecordValue.TimeToLive));
+        }
+
+        private void LoadCache()
+        {
+            if (File.Exists(cacheFileName))
+                try
+                {
+                    Console.WriteLine("Loading existing cache file...");
+
+                    cachedRecords =
+                        JsonConvert.DeserializeObject<Dictionary<string, HashSet<SerializableResourceRecord>>>(
+                            File.ReadAllText(cacheFileName), jsonSerializerSettings);
+                }
+                catch (Exception exception) when (exception is JsonException || exception is IOException)
+                {
+                    Console.WriteLine("Detected problem with cache file. File will recreate.");
+                }
+            else
+            {
+                Console.WriteLine("Will create new cache file...");
+
+                cachedRecords = new Dictionary<string, HashSet<SerializableResourceRecord>>();
             }
         }
 
-        public IEnumerable<IResourceRecord> FindResponse(Question question)
+        private static void SetUpJsonSerializerSettings(out JsonSerializerSettings serializerSettings)
         {
-            HashSet<CachedRecordValue> cachedResourceRecords = null;
-            
-            //cachedRecords.TryGetValue($"{question.Name} {question.Type}", out cachedResourceRecords);
+            serializerSettings = new JsonSerializerSettings { Formatting = Formatting.Indented };
 
-            var s = $"{question.Name} {question.Type}";
-            
-            foreach (var cachedRecordsKey in cachedRecords.Keys)
-                if (cachedRecordsKey.Equals(s))
-                    cachedResourceRecords = cachedRecords[cachedRecordsKey];
+            serializerSettings.Converters.Add(
+                new Converter<IPAddress>(reader => IPAddress.Parse((string)reader.Value)));
 
-            return cachedResourceRecords?.Select(
-                cachedRecordValue => new ResourceRecord(
-                    new Domain(cachedRecordValue.Name),
-                    cachedRecordValue.Data,
-                    cachedRecordValue.Type,
-                    cachedRecordValue.Class,
-                    new TimeSpan(0, 0, cachedRecordValue.TimeToLive)));
+            serializerSettings.Converters.Add(new Converter<Domain>(reader => new Domain(reader.Value.ToString())));
+
+            serializerSettings.Converters.Add(new Converter<RecordClass>(reader =>
+            {
+                Enum.TryParse<RecordClass>(reader.Value.ToString(), out var result);
+                return result;
+            }));
+
+            serializerSettings.Converters.Add(new Converter<RecordType>(reader =>
+            {
+                Enum.TryParse<RecordType>(reader.Value.ToString(), out var result);
+                return result;
+            }));
         }
     }
 }

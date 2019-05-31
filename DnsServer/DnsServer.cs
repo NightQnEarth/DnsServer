@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using DNS.Client;
 using DNS.Protocol;
 
 namespace DnsServer
@@ -10,80 +9,90 @@ namespace DnsServer
     public static class DnsServer
     {
         private const int DnsPortNumber = 53;
-        private const int DatagramSize = 4096; // TODO: change on 512
+        private const int UdpDatagramSize = 10000;
 
         public static void StartServer(string originDnsServerName, DnsLocalCache dnsLocalCache)
         {
             Console.WriteLine("Starting server...");
 
-            dnsLocalCache.LoadCache();
-
-            var dnsServer = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-
-            dnsServer.Bind(new IPEndPoint(IPAddress.Loopback, DnsPortNumber));
-
-            while (true)
+            using (var dnsServer = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
             {
+                dnsServer.Bind(new IPEndPoint(IPAddress.Any, DnsPortNumber));
                 EndPoint remoteAddress = new IPEndPoint(IPAddress.Any, 0);
-                var receivedMessage = new byte[DatagramSize];
+                var receivedMessage = new byte[UdpDatagramSize];
 
-                dnsServer.ReceiveFrom(receivedMessage, ref remoteAddress);
-
-                dnsLocalCache.UpdateCache();
-
-                Header receivedMessageHeader;
-
-                try
+                while (true)
                 {
-                    receivedMessageHeader = Header.FromArray(receivedMessage);
-                }
-                catch (Exception exception)
-                {
-                    Console.WriteLine(exception);
-                    continue;
-                }
+                    var receivedBytesCount = dnsServer.ReceiveFrom(receivedMessage, ref remoteAddress);
+                    var receivedMessageHeader =
+                        TryParseDnsMessage(receivedMessage, receivedBytesCount, Header.FromArray);
+                    if (receivedMessageHeader.Id == default(Header).Id &&
+                        receivedMessageHeader.Size == default(Header).Size) continue;
 
-                if (receivedMessageHeader.Response)
-                    dnsLocalCache.CacheResponse(Response.FromArray(receivedMessage));
-                else
-                {
-                    var receivedRequest = Request.FromArray(receivedMessage);
-
-                    var cachedResourceRecords = dnsLocalCache.FindResponse(receivedRequest.Questions.First());
-
-                    if (cachedResourceRecords is null)
+                    if (!receivedMessageHeader.Response)
                     {
-                        var clientRequest = new ClientRequest(originDnsServerName, DnsPortNumber, receivedRequest);
-                        var originServerResponse = clientRequest.Resolve().Result;
+                        dnsLocalCache.UpdateCache();
 
-                        dnsLocalCache.CacheResponse(originServerResponse);
+                        var receivedRequest =
+                            TryParseDnsMessage(receivedMessage, receivedBytesCount, Request.FromArray);
+                        if (receivedRequest is null) continue;
 
-                        SendMessage(dnsServer, originServerResponse, remoteAddress);
+                        var cachedResourceRecords = dnsLocalCache.FindResponse(receivedRequest.Questions.First());
+
+                        if (cachedResourceRecords is null)
+                        {
+                            dnsServer.SendTo(receivedRequest.ToArray(),
+                                             new IPEndPoint(ParseStringToIpAddress(originDnsServerName),
+                                                            DnsPortNumber));
+
+                            Array.Clear(receivedMessage, 0, receivedBytesCount);
+
+                            receivedBytesCount = dnsServer.Receive(receivedMessage);
+
+                            Response originServerResponse =
+                                TryParseDnsMessage(receivedMessage, receivedBytesCount, Response.FromArray);
+                            if (originServerResponse is null) continue;
+
+                            dnsServer.SendTo(originServerResponse.ToArray(), remoteAddress);
+
+                            if (dnsLocalCache.ToCacheResponse(originServerResponse))
+                                dnsLocalCache.SaveCache();
+                        }
+                        else
+                        {
+                            var replyResponse = Response.FromRequest(receivedRequest);
+
+                            foreach (var cachedResourceRecord in cachedResourceRecords)
+                                replyResponse.AnswerRecords.Add(cachedResourceRecord);
+
+                            dnsServer.SendTo(replyResponse.ToArray(), remoteAddress);
+                        }
                     }
-                    else
-                    {
-                        var replyResponse = Response.FromRequest(receivedRequest);
-                        foreach (var cachedResourceRecord in cachedResourceRecords)
-                            replyResponse.AnswerRecords.Add(cachedResourceRecord);
-                        SendMessage(dnsServer, replyResponse, remoteAddress);
-                    }
 
-                    dnsServer = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                    dnsServer.Bind(new IPEndPoint(IPAddress.Loopback, DnsPortNumber));
-
-                    if (!dnsLocalCache.Empty)
-                        dnsLocalCache.SaveCache();
+                    Array.Clear(receivedMessage, 0, receivedBytesCount);
                 }
-            }
-
-            // ReSharper disable once FunctionNeverReturns
+            } // ReSharper disable once FunctionNeverReturns
         }
 
-        private static void SendMessage(Socket socket, IMessage originSeverResponse, EndPoint remoteAddress)
+        private static IPAddress ParseStringToIpAddress(string hostNameOrAddress) =>
+            IPAddress.TryParse(hostNameOrAddress, out var ipAddress)
+                ? ipAddress
+                : Dns.GetHostAddresses(hostNameOrAddress).First();
+
+        private static T TryParseDnsMessage<T>(byte[] message, int messageLength, Func<byte[], T> fromArray)
         {
-            socket.Connect(remoteAddress);
-            socket.Send(originSeverResponse.ToArray());
-            socket.Close();
+            T parsedDnsMessage = default(T);
+            try
+            {
+                parsedDnsMessage = fromArray(message);
+            }
+            catch (ArgumentException exception)
+            {
+                Console.WriteLine(exception);
+                Array.Clear(message, 0, messageLength);
+            }
+
+            return parsedDnsMessage;
         }
     }
 }
