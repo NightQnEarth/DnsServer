@@ -2,18 +2,19 @@ using System;
 using System.Linq;
 using DNS.Protocol;
 using DNS.Protocol.ResourceRecords;
+using Newtonsoft.Json;
 
 namespace DnsServer
 {
     public struct SerializableResourceRecord
     {
-        public readonly Domain Name;
-        public readonly RecordType Type;
-        public readonly RecordClass Class;
-        public readonly TimeSpan TimeToLive;
-        public readonly byte[] Data;
+        [JsonProperty] public readonly Domain Name;
+        [JsonProperty] public readonly RecordType Type;
+        [JsonProperty] public readonly RecordClass Class;
+        [JsonProperty] public readonly TimeSpan TimeToLive;
+        [JsonProperty] public readonly byte[] Data;
 
-        public readonly DateTime CachedTime;
+        [JsonProperty] public readonly DateTime CachedTime;
 
         public SerializableResourceRecord(IResourceRecord resourceRecord)
         {
@@ -30,8 +31,8 @@ namespace DnsServer
             obj is SerializableResourceRecord resourceRecord && resourceRecord.Equals(this);
 
         private bool Equals(SerializableResourceRecord other) =>
-            Equals(Name, other.Name) && Type == other.Type && Class == other.Class && !(other.Data is null) &&
-            Data.SequenceEqual(other.Data);
+            Equals(Name, other.Name) && Type == other.Type && Class == other.Class &&
+            (Data == other.Data || !(Data is null) && !(other.Data is null) && Data.SequenceEqual(other.Data));
 
         public override int GetHashCode()
         {

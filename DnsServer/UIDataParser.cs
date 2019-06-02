@@ -5,6 +5,7 @@ namespace DnsServer
 {
     public static class UIDataParser
     {
+        // ReSharper disable once ParameterTypeCanBeEnumerable.Global
         public static Options GetInputData(string[] args)
         {
             var options = new Options();

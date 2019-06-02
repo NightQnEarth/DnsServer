@@ -50,8 +50,9 @@ namespace DnsServer
 
         public void SaveCache()
         {
+#if DEBUG
             Console.WriteLine("Storing cache...");
-
+#endif
             try
             {
                 using (var fileStream = new FileStream(cacheFileName, FileMode.OpenOrCreate, FileAccess.Write))
@@ -98,20 +99,24 @@ namespace DnsServer
             if (File.Exists(cacheFileName))
                 try
                 {
+#if DEBUG
                     Console.WriteLine("Loading existing cache file...");
-
+#endif
                     cachedRecords =
                         JsonConvert.DeserializeObject<Dictionary<string, HashSet<SerializableResourceRecord>>>(
                             File.ReadAllText(cacheFileName), jsonSerializerSettings);
                 }
                 catch (Exception exception) when (exception is JsonException || exception is IOException)
                 {
+#if DEBUG
                     Console.WriteLine("Detected problem with cache file. File will recreate.");
+#endif
                 }
             else
             {
-                Console.WriteLine("Will create new cache file...");
-
+#if DEBUG
+                Console.WriteLine("Will create new cache file.");
+#endif
                 cachedRecords = new Dictionary<string, HashSet<SerializableResourceRecord>>();
             }
         }
