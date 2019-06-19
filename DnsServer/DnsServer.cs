@@ -18,7 +18,7 @@ namespace DnsServer
 #endif
             using (var dnsServer = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
             {
-                dnsServer.Bind(new IPEndPoint(IPAddress.Any, DnsPortNumber));
+                dnsServer.Bind(new IPEndPoint(IPAddress.Loopback, DnsPortNumber));
                 EndPoint remoteAddress = new IPEndPoint(IPAddress.Any, 0);
                 var receivedMessage = new byte[UdpDatagramSize];
 
@@ -54,13 +54,23 @@ namespace DnsServer
 #if DEBUG
                                 Console.WriteLine($"Make request to origin server '{originDnsServerName}'.");
 #endif
-                                dnsServer.SendTo(receivedRequest.ToArray(),
+/*                                dnsServer.SendTo(receivedRequest.ToArray(),
                                                  new IPEndPoint(ParseStringToIpAddress(originDnsServerName),
                                                                 DnsPortNumber));
 
-                                Array.Clear(receivedMessage, 0, receivedBytesCount);
+                                Array.Clear(receivedMessage, 0, receivedBytesCount);*/
 
-                                receivedBytesCount = dnsServer.Receive(receivedMessage);
+                                using (var bicycle =
+                                    new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
+                                {
+                                    bicycle.SendTo(receivedRequest.ToArray(),
+                                                   new IPEndPoint(ParseStringToIpAddress(originDnsServerName),
+                                                                  DnsPortNumber));
+                                    Array.Clear(receivedMessage, 0, receivedBytesCount);
+                                    bicycle.Receive(receivedMessage);
+                                }
+
+                                // receivedBytesCount = dnsServer.Receive(receivedMessage);
 
                                 Response originServerResponse =
                                     TryParseDnsMessage(receivedMessage, receivedBytesCount, Response.FromArray);
