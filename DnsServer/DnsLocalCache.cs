@@ -28,10 +28,9 @@ namespace DnsServer
         public bool ToCacheResponse(IResponse response)
         {
             bool wasAdded = false;
-
+// TODO: CACHING PTR RR
             foreach (var resourceRecord in response.AnswerRecords.Concat(response.AuthorityRecords)
-                                                   .Concat(response.AdditionalRecords)
-                                                   .Where(record => record.Type != RecordType.PTR))
+                                                   .Concat(response.AdditionalRecords))
             {
                 var cachedRecordKey = $"{resourceRecord.Name} {resourceRecord.Type}";
 
