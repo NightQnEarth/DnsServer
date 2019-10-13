@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -11,11 +12,18 @@ namespace DnsServer
         private const int DnsPortNumber = 53;
         private const int UdpDatagramSize = 512;
 
-        public static void StartServer(string originDnsServerName, DnsLocalCache dnsLocalCache)
+        [Conditional("DEBUG")]
+        public static void DebugDataPrint(string message)
         {
 #if DEBUG
-            Console.WriteLine("Starting server...");
+            Console.WriteLine(message);
 #endif
+        }
+
+        public static void StartServer(string originDnsServerName, DnsLocalCache dnsLocalCache)
+        {
+            DebugDataPrint("Starting server...");
+
             using (var dnsServer = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
             {
                 dnsServer.Bind(new IPEndPoint(IPAddress.Loopback, DnsPortNumber));
@@ -25,9 +33,8 @@ namespace DnsServer
                 while (true)
                     try
                     {
-#if DEBUG
-                        Console.WriteLine();
-#endif
+                        DebugDataPrint("");
+
                         var receivedBytesCount = dnsServer.ReceiveFrom(receivedMessage, ref remoteAddress);
                         var receivedMessageHeader =
                             TryParseDnsMessage(receivedMessage, receivedBytesCount, Header.FromArray);
@@ -43,51 +50,40 @@ namespace DnsServer
                             if (receivedRequest is null) continue;
 
                             var question = receivedRequest.Questions.First();
-#if DEBUG
-                            Console.WriteLine(
+
+                            DebugDataPrint(
                                 $"Got request with question: [{question.Name} {question.Type} {question.Class}]");
-#endif
+
                             var cachedResourceRecords = dnsLocalCache.FindResponse(question);
 
                             if (cachedResourceRecords is null)
                             {
-#if DEBUG
-                                Console.WriteLine($"Make request to origin server '{originDnsServerName}'.");
-#endif
-/*                                dnsServer.SendTo(receivedRequest.ToArray(),
-                                                 new IPEndPoint(ParseStringToIpAddress(originDnsServerName),
-                                                                DnsPortNumber));
+                                DebugDataPrint($"Make request to origin server '{originDnsServerName}'.");
 
-                                Array.Clear(receivedMessage, 0, receivedBytesCount);*/
-
-                                using (var bicycle =
-                                    new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
+                                using (var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram,
+                                                               ProtocolType.Udp))
                                 {
-                                    bicycle.SendTo(receivedRequest.ToArray(),
-                                                   new IPEndPoint(ParseStringToIpAddress(originDnsServerName),
-                                                                  DnsPortNumber));
+                                    socket.SendTo(receivedRequest.ToArray(),
+                                                  new IPEndPoint(ParseStringToIpAddress(originDnsServerName),
+                                                                 DnsPortNumber));
                                     Array.Clear(receivedMessage, 0, receivedBytesCount);
-                                    bicycle.Receive(receivedMessage);
+                                    socket.Receive(receivedMessage);
                                 }
 
-                                // receivedBytesCount = dnsServer.Receive(receivedMessage);
-
-                                Response originServerResponse =
-                                    TryParseDnsMessage(receivedMessage, receivedBytesCount, Response.FromArray);
+                                Response originServerResponse = TryParseDnsMessage(receivedMessage, receivedBytesCount,
+                                                                                   Response.FromArray);
                                 if (originServerResponse is null)
                                 {
-#if DEBUG
-                                    Console.WriteLine($"Couldn't get response from '{originDnsServerName}'.");
-#endif
+                                    DebugDataPrint($"Couldn't get response from '{originDnsServerName}'.");
                                     continue;
                                 }
-#if DEBUG
-                                Console.WriteLine(
-                                    string.Concat($"Got response from '{originDnsServerName}' ",
-                                                  $"['{originServerResponse.AnswerRecords.Count}' answer-RR; ",
-                                                  $"'{originServerResponse.AuthorityRecords.Count}' authority-RR; ",
-                                                  $"'{originServerResponse.AdditionalRecords.Count}' additional-RR]"));
-#endif
+
+                                DebugDataPrint(string.Concat(
+                                                   $"Got response from '{originDnsServerName}' ",
+                                                   $"['{originServerResponse.AnswerRecords.Count}' answer-RR; ",
+                                                   $"'{originServerResponse.AuthorityRecords.Count}' authority-RR; ",
+                                                   $"'{originServerResponse.AdditionalRecords.Count}' additional-RR]"));
+
                                 dnsServer.SendTo(originServerResponse.ToArray(), remoteAddress);
 
                                 if (dnsLocalCache.ToCacheResponse(originServerResponse))
@@ -95,9 +91,8 @@ namespace DnsServer
                             }
                             else
                             {
-#if DEBUG
-                                Console.WriteLine("Answer resource records will take from cache.");
-#endif
+                                DebugDataPrint("Answer resource records will take from cache.");
+
                                 var replyResponse = Response.FromRequest(receivedRequest);
 
                                 foreach (var cachedResourceRecord in cachedResourceRecords)
@@ -111,11 +106,9 @@ namespace DnsServer
                     }
                     catch (SocketException)
                     {
-#if DEBUG
-                        Console.WriteLine($"Couldn't get response from '{originDnsServerName}'.");
-#endif
+                        DebugDataPrint($"Couldn't get response from '{originDnsServerName}'.");
                     }
-            } // ReSharper disable once FunctionNeverReturns
+            }
         }
 
         private static IPAddress ParseStringToIpAddress(string hostNameOrAddress) =>
@@ -125,7 +118,7 @@ namespace DnsServer
 
         private static T TryParseDnsMessage<T>(byte[] message, int messageLength, Func<byte[], T> fromArray)
         {
-            T parsedDnsMessage = default(T);
+            T parsedDnsMessage = default;
             try
             {
                 parsedDnsMessage = fromArray(message);
